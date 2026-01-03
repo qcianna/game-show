@@ -1,12 +1,12 @@
 import fastify from 'fastify';
 import { setupWebSocket } from './websocket';
 import type { Player, Room, ClientMsg, ServerMsg } from './types';
+import { roomToJson } from './types';
 
 const app = fastify();
-const rooms = new Map();
+const rooms = new Map<string, Room>();
 
 function generateRoomCode(length = 6) {
-  // bez O/0 i I/1 żeby nie mylić
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
   for (let i = 0; i < length; i++) {
@@ -16,26 +16,28 @@ function generateRoomCode(length = 6) {
   return code;
 }
 
-function createRoom(): Room {
-  let roomCode = generateRoomCode();
-  while (rooms.has(roomCode)) roomCode = generateRoomCode();
+function createRoom(code?: string): Room {
+  let roomCode: string;
+  if (code) {
+    if (rooms.has(code)) {
+      throw new Error("Room code already exists");
+    }
+    roomCode = code;
+  } else {
+    roomCode = generateRoomCode();
+    while (rooms.has(roomCode)) roomCode = generateRoomCode();
+  }
 
   const room: Room = {
     code: roomCode,
     createdAt: new Date().toISOString(),
-    players: new Map()
+    players: new Map(),
+    buzzEnabled: false,
+    buzzList: []
   };
 
   rooms.set(roomCode, room);
   return room;
-}
-
-function roomToJson(room: Room) {
-  return {
-    roomCode: room.code,
-    createdAt: room.createdAt,
-    players: Array.from(room.players.values())
-  };
 }
 
 app.get<{
@@ -52,31 +54,61 @@ app.get<{
   return roomToJson(room);
 });
 
-app.post("/rooms", async (_request, reply) => {
-  const room = createRoom();
-  reply.code(201);
-  return { roomCode: room.code };
+app.get("/rooms", async () => {
+  const list = Array.from(rooms.values()).map(room => roomToJson(room));
+  return { status: "ok", rooms: list };
 });
- 
 
-// app.get("/rooms/:code", async (request, reply) => {
-//   const { code } = request.params;
+app.post<{
+  Body: { id?: string };
+}>("/rooms", async (request, reply) => {
+  const { id } = request.body || {};
+  try {
+    const room = createRoom(id);
+    reply.code(201);
+    return { roomCode: room.code };
+  } catch (err) {
+    reply.code(400);
+    return { error: "ROOM_CODE_EXISTS" };
+  }
+});
 
-//   const room = rooms.get(code);
-//   if (!room) {
-//     reply.code(404);
-//     return { error: "ROOM_NOT_FOUND" };
-//   }
+app.delete<{
+  Params: { code: string };
+}>("/rooms/:code", async (request, reply) => {
+  const { code } = request.params;
 
-//   return roomToJson(room);
-// });
+  if (!rooms.has(code)) {
+    reply.code(404);
+    return { error: "ROOM_NOT_FOUND" };
+  }
 
+  rooms.delete(code);
+  reply.code(204);  // No Content
+});
 
+app.delete("/rooms", async (request, reply) => {
+  rooms.clear();
+  reply.code(204);  // No Content
+});
 
 const start = async () => {
   try {
-    await app.listen({ port: 3000 });
-    console.log('Server is running on http://localhost:3000');
+    let host = '0.0.0.0';
+    let port = 3000;
+    const args = process.argv.slice(2);
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === '--host' && args[i + 1]) {
+        host = args[i + 1];
+        i++;
+      } else if (args[i] === '--port' && args[i + 1]) {
+        port = parseInt(args[i + 1], 10);
+        i++;
+      }
+    }
+
+    await app.listen({ port, host });
+    console.log(`Server is running on http://${host}:${port}`);
     setupWebSocket(app.server, rooms);
   } catch (err) {
     app.log.error(err);

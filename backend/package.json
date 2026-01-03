@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx src/index.ts"
+    "dev:local": "tsx src/index.ts --host localhost --port 3000",
+    "dev:external": "tsx src/index.ts --host 0.0.0.0 --port 3000"
   },
   "keywords": [],
   "author": "",
