@@ -1,20 +1,29 @@
 export type Player = { id: string; name: string };
-export type Room = {
+export interface Room {
   code: string;
   createdAt: string;
   players: Map<string, Player>;
-};
+  adminId?: string;
+  buzzEnabled: boolean;
+  buzzList: { playerId: string; timestamp: number }[];
+}
 
 export type ClientMsg =
-  | { type: "JOIN"; roomCode: string; name: string }
-  | { type: "RESET"; roomCode: string }
-  | { type: "BUZZ"; roomCode: string };
+  | { type: "JOIN"; roomCode: string; playerId: string, playerName: string }
+  | { type: "RESET_BUZZ"; roomCode: string; playerId: string }
+  | { type: "BUZZ"; roomCode: string;playerId: string }
+  | { type: "ENABLE_BUZZ"; roomCode: string; playerId: string };
 
 export type ServerMsg =
-  | {
-      type: "STATE";
-      roomCode: string;
-      players: Player[];
-      online: { id: string; name: string }[];
-    }
-  | { type: "ERROR"; code: string; message: string };
+  | { status: "ERROR"; code: string; message: string }
+  | { status: "STATE"; roomCode: string; details: Object}
+  | { status: "BUZZ_ENABLED"; roomCode: string; details: Object}
+  | { status: "BUZZ_RESET"; roomCode: string; details: Object}
+  | { status: "BUZZ_UPDATE"; roomCode: string; details: Object};
+
+export function roomToJson(room: Room) {
+  return {
+    ...room,
+    players: Array.from(room.players.values())
+  };
+}
